@@ -1,0 +1,30 @@
+# Environment — never commit credentials
+.env
+
+# Local dev tooling
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+*.so
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store

@@ -1,0 +1,102 @@
+# Requires Docker Compose v2 (ships with Docker Desktop 3.4+)
+# Usage: docker compose up -d
+# After first start, create topics: make topics
+
+services:
+
+  # ── Message Broker ────────────────────────────────────────────────────────
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    command:
+      - redpanda
+      - start
+      - --mode dev-container
+      - --smp 1
+      - --memory 512M
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --default-log-level=warn
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr redpanda:33145
+      - --advertise-rpc-addr redpanda:33145
+    ports:
+      - "19092:19092"   # Kafka API  (host → container)
+      - "18081:18081"   # Schema Registry
+      - "18082:18082"   # Pandaproxy REST
+      - "9644:9644"     # Admin API
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_SCHEMAREGISTRY_ENABLED: "true"
+      KAFKA_SCHEMAREGISTRY_URLS: "http://redpanda:8081"
+    ports:
+      - "8080:8080"     # Redpanda Console UI
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  # ── Database ──────────────────────────────────────────────────────────────
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pipeline}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pipeline}
+      POSTGRES_DB: ${POSTGRES_DB:-marketdata}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pipeline} -d ${POSTGRES_DB:-marketdata}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Dashboard ─────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/market-data.json
+      # Passed through so provisioning files can reference them
+      POSTGRES_USER: ${POSTGRES_USER:-pipeline}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pipeline}
+      POSTGRES_DB: ${POSTGRES_DB:-marketdata}
+    ports:
+      - "3000:3000"     # Grafana UI
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+# ── Application services (added in subsequent phases) ──────────────────────
+# ingester:   Phase 2
+# processor:  Phase 4
+# storage-writer: Phase 3
+# api:        Phase 5
+
+volumes:
+  redpanda_data:
+  postgres_data:
+  grafana_data:

@@ -1,0 +1,118 @@
+{
+  "uid": "market-data-pipeline",
+  "title": "Market Data Pipeline",
+  "tags": ["market-data"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "BTC/USDT — Close Price (1m candles)",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "marketdata-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 8, "spanNulls": false }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "single", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "marketdata-postgres" },
+          "rawSql": "SELECT\n  bucket_time AS time,\n  close AS \"Price (USD)\"\nFROM ohlcv\nWHERE\n  symbol = 'BTCUSDT'\n  AND $__timeFilter(bucket_time)\nORDER BY time ASC",
+          "format": "time_series"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Anomalies (last hour)",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 10 },
+      "datasource": { "type": "postgres", "uid": "marketdata-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "marketdata-postgres" },
+          "rawSql": "SELECT NOW() AS time, COUNT(*) AS \"Anomalies\" FROM anomalies WHERE detected_at >= NOW() - INTERVAL '1 hour'",
+          "format": "time_series"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Latest BTC Price",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 10 },
+      "datasource": { "type": "postgres", "uid": "marketdata-postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "value"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "marketdata-postgres" },
+          "rawSql": "SELECT bucket_time AS time, close AS \"BTC/USDT\" FROM ohlcv WHERE symbol = 'BTCUSDT' ORDER BY bucket_time DESC LIMIT 1",
+          "format": "time_series"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Recent Anomalies",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 14 },
+      "datasource": { "type": "postgres", "uid": "marketdata-postgres" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "sortBy": [{ "displayName": "detected_at", "desc": true }] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "marketdata-postgres" },
+          "rawSql": "SELECT\n  detected_at,\n  symbol,\n  anomaly_type,\n  ROUND(severity, 4) AS severity,\n  details\nFROM anomalies\nWHERE $__timeFilter(detected_at)\nORDER BY detected_at DESC\nLIMIT 100",
+          "format": "table"
+        }
+      ]
+    }
+  ]
+}

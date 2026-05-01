@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from src.transform import normalize, _iso_to_ms
+from src.transform import normalize, _iso_to_ms, _json_number_str
 
 # A realistic Kraken trade payload (single entry from "data" array)
 SAMPLE = {
@@ -59,6 +59,13 @@ def test_normalize_trade_and_event_time_equal():
     assert result["trade_time_ms"] == result["event_time_ms"]
 
 
+def test_normalize_preserves_string_price_and_qty():
+    event = {**SAMPLE, "price": "65432.10", "qty": "0.00123"}
+    result = normalize(event)
+    assert result["price"] == "65432.10"
+    assert result["quantity"] == "0.00123"
+
+
 def test_normalize_buyer_is_maker_sell_side():
     # side=sell → taker sold → buyer was the passive/maker side
     event = {**SAMPLE, "side": "sell"}
@@ -86,3 +93,18 @@ def test_iso_to_ms_known_value():
     result = _iso_to_ms("2024-05-01T00:00:00.000000Z")
     expected = int(datetime(2024, 5, 1, tzinfo=timezone.utc).timestamp() * 1000)
     assert result == expected
+
+
+def test_iso_to_ms_naive_assumes_utc():
+    """Naive timestamps must not depend on container local timezone."""
+    result = _iso_to_ms("2024-05-01T00:00:00.000000")
+    expected = int(datetime(2024, 5, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    assert result == expected
+
+
+def test_json_number_str_passthrough_str():
+    assert _json_number_str("1.234") == "1.234"
+
+
+def test_json_number_str_float():
+    assert _json_number_str(1.25) == "1.25"

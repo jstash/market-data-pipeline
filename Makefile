@@ -36,9 +36,9 @@ topics:      ## Create Kafka topics (run once after 'make up')
 logs-%:
 	docker compose logs -f $*
 
-# Open a psql shell into the database
+# Open a psql shell into the database (honour POSTGRES_USER / POSTGRES_DB if exported)
 psql:
-	docker compose exec postgres psql -U pipeline -d marketdata
+	docker compose exec postgres psql -U $${POSTGRES_USER:-pipeline} -d $${POSTGRES_DB:-marketdata}
 
 # Consume from a topic (for debugging):  make consume-topic TOPIC=raw.prices
 consume-topic:

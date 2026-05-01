@@ -1,10 +1,10 @@
 # Market Data Pipeline
 
-A real-time market data pipeline that streams BTC/USDT trades from Binance, processes them into OHLCV candles, detects anomalies, and surfaces everything in a Grafana dashboard.
+A real-time market data pipeline that streams trades from [Kraken](https://www.kraken.com/) over WebSocket (pair configurable via `SYMBOL` in `.env`), processes them into OHLCV candles, detects anomalies, and surfaces everything in a Grafana dashboard.
 
 ```
-Binance WebSocket → Redpanda (Kafka) → Processor → TimescaleDB → Grafana
-                                                  → Anomaly Detector →
+Kraken WebSocket → Redpanda (Kafka) → Processor → TimescaleDB → Grafana
+                                     → Anomaly Detector →
 ```
 
 Everything runs locally with a single command.
@@ -17,9 +17,11 @@ docker compose up -d        # start all infrastructure
 make topics                 # create Kafka topics (once, after first start)
 ```
 
+Edit `SYMBOL` in `.env` (Kraken pair, e.g. `BTC/USD`) if you want a different market.
+
 | Service | URL |
 |---|---|
-| Grafana dashboard | http://localhost:3000 (admin / admin) |
+| Grafana dashboard | http://localhost:3000 (username `admin`, password `admin` — override with `GRAFANA_ADMIN_PASSWORD` in `.env`) |
 | Redpanda Console | http://localhost:8080 |
 | Kafka broker (external) | localhost:19092 |
 | PostgreSQL | localhost:5432 |
@@ -28,7 +30,7 @@ make topics                 # create Kafka topics (once, after first start)
 
 | Service | Language | Purpose | Phase |
 |---|---|---|---|
-| `ingester` | Python | Binance WebSocket → `raw.prices` Kafka topic | 2 |
+| `ingester` | Python | Kraken WebSocket → `raw.prices` Kafka topic | ✓ |
 | `processor` | Python | OHLCV windowing + anomaly detection | 4 |
 | `storage-writer` | Python | Kafka → TimescaleDB | 3 |
 | `api` | FastAPI | REST query layer over TimescaleDB | 5 |
@@ -56,8 +58,8 @@ make consume-topic TOPIC=raw.prices
 | Phase | Description | Status |
 |---|---|---|
 | 1 | Infrastructure — Redpanda, TimescaleDB, Grafana | ✅ complete |
-| 2 | `ingester` — Binance WebSocket → Kafka | 🔜 next |
-| 3 | `storage-writer` — Kafka → TimescaleDB | planned |
+| 2 | `ingester` — Kraken WebSocket → Kafka | ✅ complete |
+| 3 | `storage-writer` — Kafka → TimescaleDB | 🔜 next |
 | 4 | `processor` — OHLCV windowing + anomaly detection | planned |
 | 5 | `api` — FastAPI read layer | planned |
 | 6 | Polish — GitHub Actions CI, pinned image versions | planned |

@@ -1,0 +1,3 @@
+# Test dependencies only — does NOT include confluent-kafka or websockets,
+# which require C extensions and are only built inside the Docker image.
+pytest==8.2.2

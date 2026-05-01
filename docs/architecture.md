@@ -61,17 +61,19 @@ This document records the key design decisions made during the project, includin
 
 ---
 
-## ADR-5: Binance WebSocket over REST polling
+## ADR-5: Kraken WebSocket over REST polling (and over Binance)
 
-**Context.** Stock/crypto data can be ingested via REST polling (CoinGecko, Alpha Vantage) or a real-time WebSocket feed.
+**Context.** Stock/crypto data can be ingested via REST polling (CoinGecko, Alpha Vantage) or a real-time WebSocket feed. Binance was the initial candidate for its well-known aggTrade stream.
 
-**Decision.** Use the Binance public trade WebSocket (`wss://stream.binance.com:9443/ws/<symbol>@trade`).
+**Decision.** Use the Kraken public trade WebSocket v2 (`wss://ws.kraken.com/v2`).
 
 **Consequences.**
-- The ingester is genuinely event-driven, not simulated streaming via polling. Each Binance `aggTrade` event is published to Kafka as it arrives.
+- The ingester is genuinely event-driven, not simulated streaming via polling. Each Kraken trade event is published to Kafka as it arrives.
 - No API key required — the public stream is unauthenticated. This is important for a public GitHub repo.
-- The ingester must implement reconnection with exponential backoff; WebSocket connections drop periodically.
+- Globally accessible: Binance.com returns HTTP 451 (geo-blocked) for US-based IPs. Kraken has no such restriction, making the project runnable anywhere without a VPN.
+- The ingester must send a subscription message after connecting, then implement reconnection with exponential backoff; WebSocket connections drop periodically.
 - Tradeoff: at high tick frequency (BTC generates hundreds of trades/minute), message volume is real. Kafka retention policy and TimescaleDB compression are the controls for managing disk growth.
+- Tradeoff: Kraken sends prices as floats, not strings. The `normalize` function converts them to strings on ingestion to preserve decimal precision across the Kafka boundary.
 
 ---
 

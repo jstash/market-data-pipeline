@@ -90,11 +90,24 @@ services:
       postgres:
         condition: service_healthy
 
-# ── Application services (added in subsequent phases) ──────────────────────
-# ingester:   Phase 2
-# processor:  Phase 4
-# storage-writer: Phase 3
-# api:        Phase 5
+# ── Application services ───────────────────────────────────────────────────
+  ingester:
+    build:
+      context: ./services/ingester
+      dockerfile: Dockerfile
+    environment:
+      SYMBOL: ${SYMBOL:-BTC/USD}
+      REDPANDA_BROKERS: ${REDPANDA_BROKERS:-redpanda:9092}
+      KAFKA_TOPIC_RAW: raw.prices
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # processor:      Phase 4
+  # storage-writer: Phase 3
+  # api:            Phase 5
 
 volumes:
   redpanda_data:

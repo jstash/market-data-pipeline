@@ -105,9 +105,25 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # processor:      Phase 4
-  # storage-writer: Phase 3
-  # api:            Phase 5
+  storage-writer:
+    build:
+      context: ./services/storage-writer
+      dockerfile: Dockerfile
+    environment:
+      REDPANDA_BROKERS: ${REDPANDA_BROKERS:-redpanda:9092}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pipeline}:${POSTGRES_PASSWORD:-pipeline}@postgres:5432/${POSTGRES_DB:-marketdata}
+      KAFKA_TOPIC_OHLCV: processed.ohlcv
+      KAFKA_TOPIC_ANOMALY: alerts.anomalies
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # processor: Phase 4
+  # api:       Phase 5
 
 volumes:
   redpanda_data:

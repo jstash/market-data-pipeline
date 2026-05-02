@@ -59,8 +59,8 @@ make consume-topic TOPIC=raw.prices
 |---|---|---|
 | 1 | Infrastructure — Redpanda, TimescaleDB, Grafana | ✅ complete |
 | 2 | `ingester` — Kraken WebSocket → Kafka | ✅ complete |
-| 3 | `storage-writer` — Kafka → TimescaleDB | 🔜 next |
-| 4 | `processor` — OHLCV windowing + anomaly detection | planned |
+| 3 | `storage-writer` — Kafka → TimescaleDB | ✅ complete |
+| 4 | `processor` — OHLCV windowing + anomaly detection | 🔜 next |
 | 5 | `api` — FastAPI read layer | planned |
 | 6 | Polish — GitHub Actions CI, pinned image versions | planned |
 

@@ -122,8 +122,25 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # processor: Phase 4
-  # api:       Phase 5
+  processor:
+    build:
+      context: ./services/processor
+      dockerfile: Dockerfile
+    environment:
+      REDPANDA_BROKERS: ${REDPANDA_BROKERS:-redpanda:9092}
+      KAFKA_TOPIC_RAW: raw.prices
+      KAFKA_TOPIC_OHLCV: processed.ohlcv
+      KAFKA_TOPIC_ANOMALY: alerts.anomalies
+      ANOMALY_WINDOW_SIZE: ${ANOMALY_WINDOW_SIZE:-20}
+      ANOMALY_Z_THRESHOLD: ${ANOMALY_Z_THRESHOLD:-3.0}
+      MISSING_DATA_GAP_MINUTES: ${MISSING_DATA_GAP_MINUTES:-5}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # api: Phase 5
 
 volumes:
   redpanda_data:

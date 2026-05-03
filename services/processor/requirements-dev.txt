@@ -1,0 +1,2 @@
+# window.py and detector.py have no external dependencies — only pytest needed.
+pytest==8.2.2

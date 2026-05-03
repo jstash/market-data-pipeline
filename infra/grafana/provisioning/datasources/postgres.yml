@@ -13,5 +13,6 @@ datasources:
       sslmode: disable
       postgresVersion: 1600
       timescaledb: true   # enables TimescaleDB-aware query optimizations
+      database: ${POSTGRES_DB}   # "Default database" shown in query editor (Grafana 10+)
     isDefault: true
     editable: false

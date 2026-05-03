@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.detector import AnomalyDetector
+from src.detector import AnomalyDetector, take_first_missing_data_alert
 
 
 def _candle(close, symbol="BTCUSD", bucket="2024-05-01T00:00:00+00:00"):
@@ -128,3 +128,33 @@ def test_missing_data_fires_just_past_boundary():
     det = AnomalyDetector()
     result = det.check_missing_data("BTCUSD", last_ms=0, now_ms=5 * 60_000 + 1, gap_minutes=5)
     assert result is not None
+
+
+# ── take_first_missing_data_alert (dedupe across periodic checks) ─────────────
+
+
+def test_take_first_missing_data_alert_emits_once():
+    det = AnomalyDetector()
+    alerted: set[str] = set()
+    raw = det.check_missing_data("BTCUSD", last_ms=0, now_ms=10 * 60_000, gap_minutes=5)
+    first = take_first_missing_data_alert("BTCUSD", raw, alerted)
+    second = take_first_missing_data_alert("BTCUSD", raw, alerted)
+    assert first is not None
+    assert second is None
+    assert "BTCUSD" in alerted
+
+
+def test_take_first_missing_data_alert_none_stays_silent():
+    alerted: set[str] = set()
+    assert take_first_missing_data_alert("BTCUSD", None, alerted) is None
+    assert alerted == set()
+
+
+def test_take_first_missing_data_alert_cleared_after_symbol_discard():
+    det = AnomalyDetector()
+    alerted: set[str] = set()
+    raw = det.check_missing_data("BTCUSD", last_ms=0, now_ms=10 * 60_000, gap_minutes=5)
+    assert take_first_missing_data_alert("BTCUSD", raw, alerted) is not None
+    alerted.discard("BTCUSD")
+    again = take_first_missing_data_alert("BTCUSD", raw, alerted)
+    assert again is not None

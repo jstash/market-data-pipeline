@@ -13,6 +13,10 @@ is lost and a fresh candle starts — this is acceptable because:
   2. The storage-writer uses ON CONFLICT DO UPDATE so replayed candles
      are idempotent.
 
+Kafka offsets are committed manually after each successfully handled
+``raw.prices`` message (including malformed payloads that are skipped) so
+restarts replay at-most one extra message; OHLCV upserts stay idempotent.
+
 At scale (multi-symbol, multi-exchange) replace this service with a Flink
 job backed by RocksDB state.  The Kafka-in / Kafka-out interface is
 unchanged.
@@ -39,10 +43,10 @@ import time
 from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from confluent_kafka import Consumer, Producer, KafkaError
+from confluent_kafka import Consumer, KafkaError, KafkaException, Producer
 
-from src.window   import WindowAccumulator
-from src.detector import AnomalyDetector
+from src.detector import AnomalyDetector, take_first_missing_data_alert
+from src.window import WindowAccumulator
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -123,8 +127,7 @@ def run(log: logging.Logger) -> None:
         "bootstrap.servers":  BROKERS,
         "group.id":           CONSUMER_GROUP,
         "auto.offset.reset":  "earliest",
-        "enable.auto.commit": True,
-        "auto.commit.interval.ms": 5_000,
+        "enable.auto.commit": False,
     })
     consumer.subscribe([TOPIC_RAW])
     log.info(f"subscribed | topic={TOPIC_RAW}")
@@ -133,6 +136,8 @@ def run(log: logging.Logger) -> None:
     last_flush = time.monotonic()
     # tracks the last candle emission time per symbol for missing-data detection
     last_candle_ms: dict[str, int] = {}
+    # suppress repeat missing_data while the same gap persists (cleared on new candle)
+    missing_data_alerted: set[str] = set()
     candle_count   = 0
     anomaly_count  = 0
 
@@ -151,15 +156,24 @@ def run(log: logging.Logger) -> None:
             if now - last_flush >= FLUSH_INTERVAL:
                 cutoff_ms = int((time.time() - 90) * 1000)
                 for candle in accumulator.flush_older_than(cutoff_ms):
-                    _emit_candle(candle, producer, detector, log,
-                                 last_candle_ms)
+                    _emit_candle(
+                        candle,
+                        producer,
+                        detector,
+                        log,
+                        last_candle_ms,
+                        missing_data_alerted,
+                    )
                     candle_count += 1
 
-                # missing-data check
+                # missing-data check (at most one alert per symbol per gap)
                 now_ms = int(time.time() * 1000)
                 for symbol, last_ms in last_candle_ms.items():
-                    anomaly = detector.check_missing_data(
+                    raw_anomaly = detector.check_missing_data(
                         symbol, last_ms, now_ms, MISSING_GAP_MINUTES
+                    )
+                    anomaly = take_first_missing_data_alert(
+                        symbol, raw_anomaly, missing_data_alerted
                     )
                     if anomaly:
                         _produce(producer, TOPIC_ANOMALY, symbol, anomaly)
@@ -182,20 +196,41 @@ def run(log: logging.Logger) -> None:
                 continue
 
             try:
-                payload = json.loads(msg.value())
+                raw = msg.value()
+                payload = json.loads(raw)
                 symbol  = payload["symbol"]
                 price   = Decimal(payload["price"])
                 qty     = Decimal(payload["quantity"])
                 ts_ms   = int(payload["trade_time_ms"])
-            except (KeyError, ValueError) as exc:
-                log.error(f"malformed trade | err={exc} raw={msg.value()[:200]}")
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+                if isinstance(raw, (bytes, bytearray)):
+                    peek = raw[:200].decode("utf-8", errors="replace")
+                else:
+                    peek = str(raw)[:200]
+                log.error(f"malformed trade | err={exc} raw={peek!r}")
+                try:
+                    consumer.commit(msg, asynchronous=False)
+                except KafkaException as kexc:
+                    log.error(f"offset commit failed after malformed trade | err={kexc}")
                 continue
 
             for candle in accumulator.add_trade(symbol, price, qty, ts_ms):
-                _emit_candle(candle, producer, detector, log, last_candle_ms)
+                _emit_candle(
+                    candle,
+                    producer,
+                    detector,
+                    log,
+                    last_candle_ms,
+                    missing_data_alerted,
+                )
                 candle_count += 1
                 if candle_count % 50 == 0:
                     log.info(f"emitted {candle_count} candles | anomalies={anomaly_count}")
+
+            try:
+                consumer.commit(msg, asynchronous=False)
+            except KafkaException as exc:
+                log.error(f"offset commit failed | err={exc}")
 
     finally:
         producer.flush(timeout=10)
@@ -211,11 +246,13 @@ def _emit_candle(
     detector: AnomalyDetector,
     log: logging.Logger,
     last_candle_ms: dict[str, int],
+    missing_data_alerted: set[str],
 ) -> None:
     """Produce a completed candle and check it for anomalies."""
     msg = candle.to_message()
     _produce(producer, TOPIC_OHLCV, candle.symbol, msg)
     last_candle_ms[candle.symbol] = candle.bucket_ms
+    missing_data_alerted.discard(candle.symbol)
 
     anomaly = detector.check_candle(msg)
     if anomaly:

@@ -98,3 +98,22 @@ class AnomalyDetector:
             "severity":     None,
             "details":      {"gap_minutes": round(gap_ms / 60_000, 2)},
         }
+
+
+def take_first_missing_data_alert(
+    symbol: str,
+    anomaly: dict[str, Any] | None,
+    alerted_symbols: set[str],
+) -> dict[str, Any] | None:
+    """
+    Return ``anomaly`` only the first time for a given outage.
+
+    Periodic flush would otherwise emit ``missing_data`` every interval for
+    the same symbol until a new candle arrives.  Caller must call
+    ``alerted_symbols.discard(symbol)`` when a candle is emitted so a future
+    gap can alert again.
+    """
+    if anomaly is None or symbol in alerted_symbols:
+        return None
+    alerted_symbols.add(symbol)
+    return anomaly

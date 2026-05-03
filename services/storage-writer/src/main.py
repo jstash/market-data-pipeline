@@ -4,8 +4,9 @@ storage-writer: Kafka → TimescaleDB
 Consumes processed.ohlcv and alerts.anomalies and upserts into TimescaleDB.
 
 Delivery guarantee: Kafka offsets are committed only after a successful
-database commit.  Combined with idempotent upserts this gives at-least-once
-delivery with no duplicate rows.
+database commit.  ``ohlcv`` upserts are idempotent on replay; ``anomalies``
+rows are append-only and may duplicate if the same Kafka message is
+redelivered (e.g. ``price_spike``), unless you add dedupe keys downstream.
 
 Replayability: because the database is a projection of the Kafka log, you can
 rebuild it at any time within the topic retention window by truncating the
@@ -33,7 +34,6 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import psycopg2
-import psycopg2.extras
 from confluent_kafka import Consumer, KafkaError
 
 from src.parsers import parse_ohlcv, parse_anomaly
@@ -77,6 +77,9 @@ _INSERT_ANOMALY = """
     VALUES
         (%(symbol)s, %(detected_at)s::timestamptz, %(anomaly_type)s,
          %(severity)s, %(details)s::jsonb)
+    -- No ON CONFLICT: anomalies are append-only.  The processor deduplicates
+    -- repeat ``missing_data`` alerts; other anomaly types can still duplicate
+    -- on Kafka replay.
 """
 
 # ── Health check ──────────────────────────────────────────────────────────────
@@ -166,14 +169,19 @@ def run(log: logging.Logger) -> None:
                     log.error(f"kafka error | {msg.error()}")
                 continue
 
-            topic   = msg.topic()
-            raw     = msg.value()
+            topic = msg.topic()
+            raw   = msg.value()
+            if raw is None:
+                # Tombstone (e.g. compacted topic): advance offset, nothing to persist.
+                consumer.commit(msg, asynchronous=False)
+                continue
 
             try:
                 payload = json.loads(raw)
             except json.JSONDecodeError as exc:
-                log.error(f"invalid JSON | topic={topic} err={exc} raw={raw[:200]}")
-                consumer.commit(asynchronous=False)  # skip unrecoverable message
+                peek = raw[:200] if isinstance(raw, (bytes, bytearray)) else str(raw)[:200]
+                log.error(f"invalid JSON | topic={topic} err={exc} raw={peek!r}")
+                consumer.commit(msg, asynchronous=False)  # skip unrecoverable message
                 continue
 
             try:
@@ -193,12 +201,12 @@ def run(log: logging.Logger) -> None:
                             f" severity={payload.get('severity')}"
                         )
                 db.commit()
-                consumer.commit(asynchronous=False)
+                consumer.commit(msg, asynchronous=False)
 
             except ValueError as exc:
                 # Malformed payload — log, skip, don't crash.
                 log.error(f"malformed message | topic={topic} err={exc}")
-                consumer.commit(asynchronous=False)
+                consumer.commit(msg, asynchronous=False)
 
             except psycopg2.Error as exc:
                 db.rollback()

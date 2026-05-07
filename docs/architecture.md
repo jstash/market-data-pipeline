@@ -11,9 +11,9 @@ This document records the key design decisions made during the project, includin
 **Decision.** Use Redpanda.
 
 **Consequences.**
-- Cold start is ~3–5 seconds vs. ~30+ seconds for Confluent. For demos this matters.
+- Cold start is ~3–5 seconds vs. ~30+ seconds for Confluent.
 - No ZooKeeper dependency. Single binary. `--mode dev-container` removes the need to configure listeners manually.
-- Ships with a built-in Kafka-compatible Schema Registry and Redpanda Console (web UI) — two features we get for free.
+- Ships with a built-in Kafka-compatible Schema Registry and Redpanda Console (web UI)
 - API is fully Kafka-compatible. Any `confluent-kafka-python` or `kafka-python` client works unchanged.
 - Tradeoff: in a production environment you'd run Redpanda in a multi-node cluster or use a managed Kafka service (Confluent Cloud, MSK). The migration is transparent to application code because the API is identical.
 
@@ -57,7 +57,7 @@ This document records the key design decisions made during the project, includin
 - Zero frontend code. The dashboard renders the moment `docker compose up` completes.
 - Provisioning as code means the dashboard is reproducible — anyone who clones the repo gets the same dashboard.
 - Grafana has native TimescaleDB awareness (`timescaledb: true` in the datasource config) and excellent time-series rendering.
-- Tradeoff: less control over UX than a custom frontend. For a data pipeline project this is the right tradeoff — Grafana is the actual industry tooling.
+- Tradeoff: less control over UX than a custom frontend, but it is sufficient for observing the pipeline.
 
 ---
 
@@ -106,6 +106,6 @@ Kafka delivers messages **at least once**. Every consumer in this pipeline must 
 |---|---|
 | Schema Registry (Avro/Protobuf) | Redpanda includes one; add it when adding a second producer |
 | Multiple symbols / exchanges | Single symbol validates the full pipeline; multi-symbol is additive |
-| API authentication | Not relevant to the data engineering story |
+| API authentication | Unnecessary for demo, would be included prior to production deployment |
 | Kubernetes | Correct for production; over-engineered for a single-developer demo |
 | Exactly-once semantics | At-least-once + idempotent writes achieves the same result with less complexity |

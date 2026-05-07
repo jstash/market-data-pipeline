@@ -1,5 +1,7 @@
 # Market Data Pipeline
 
+[![CI](https://github.com/jstash/market-data-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/jstash/market-data-pipeline/actions/workflows/ci.yml)
+
 A real-time market data pipeline that streams trades from [Kraken](https://www.kraken.com/) over WebSocket (pair configurable via `SYMBOL` in `.env`), processes them into OHLCV candles, detects anomalies, and surfaces everything in a Grafana dashboard.
 
 ```
@@ -22,6 +24,7 @@ Edit `SYMBOL` in `.env` (Kraken pair, e.g. `BTC/USD`) if you want a different ma
 | Service | URL |
 |---|---|
 | Grafana dashboard | http://localhost:3000 (username `admin`, password `admin` — override with `GRAFANA_ADMIN_PASSWORD` in `.env`) |
+| REST API | http://localhost:8001 (docs at `/docs`) |
 | Redpanda Console | http://localhost:8080 |
 | Kafka broker (external) | localhost:19092 |
 | PostgreSQL | localhost:5432 |
@@ -31,9 +34,9 @@ Edit `SYMBOL` in `.env` (Kraken pair, e.g. `BTC/USD`) if you want a different ma
 | Service | Language | Purpose | Phase |
 |---|---|---|---|
 | `ingester` | Python | Kraken WebSocket → `raw.prices` Kafka topic | ✓ |
-| `processor` | Python | OHLCV windowing + anomaly detection | 4 |
-| `storage-writer` | Python | Kafka → TimescaleDB | 3 |
-| `api` | FastAPI | REST query layer over TimescaleDB | 5 |
+| `processor` | Python | OHLCV windowing + anomaly detection | ✓ |
+| `storage-writer` | Python | Kafka → TimescaleDB | ✓ |
+| `api` | Python / FastAPI | REST query layer over TimescaleDB | ✓ |
 | `redpanda` | — | Kafka-compatible message broker | ✓ |
 | `postgres` | — | TimescaleDB (time-series Postgres) | ✓ |
 | `grafana` | — | Dashboard, provisioned as code | ✓ |
@@ -60,9 +63,9 @@ make consume-topic TOPIC=raw.prices
 | 1 | Infrastructure — Redpanda, TimescaleDB, Grafana | ✅ complete |
 | 2 | `ingester` — Kraken WebSocket → Kafka | ✅ complete |
 | 3 | `storage-writer` — Kafka → TimescaleDB | ✅ complete |
-| 4 | `processor` — OHLCV windowing + anomaly detection | 🔜 next |
-| 5 | `api` — FastAPI read layer | planned |
-| 6 | Polish — GitHub Actions CI, pinned image versions | planned |
+| 4 | `processor` — OHLCV windowing + anomaly detection | ✅ complete |
+| 5 | `api` — FastAPI read layer | ✅ complete |
+| 6 | Polish — GitHub Actions CI, pinned image versions | ✅ complete |
 
 ## Architecture decisions
 

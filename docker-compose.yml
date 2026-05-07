@@ -6,7 +6,7 @@ services:
 
   # ── Message Broker ────────────────────────────────────────────────────────
   redpanda:
-    image: docker.redpanda.com/redpandadata/redpanda:latest
+    image: docker.redpanda.com/redpandadata/redpanda:v26.1.6
     command:
       - redpanda
       - start
@@ -38,7 +38,7 @@ services:
       start_period: 30s
 
   redpanda-console:
-    image: docker.redpanda.com/redpandadata/console:latest
+    image: docker.redpanda.com/redpandadata/console:v3.7.2
     environment:
       KAFKA_BROKERS: redpanda:9092
       KAFKA_SCHEMAREGISTRY_ENABLED: "true"
@@ -51,7 +51,7 @@ services:
 
   # ── Database ──────────────────────────────────────────────────────────────
   postgres:
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:2.26.4-pg16
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-pipeline}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pipeline}
@@ -70,7 +70,7 @@ services:
 
   # ── Dashboard ─────────────────────────────────────────────────────────────
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.0.1
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
@@ -140,7 +140,19 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # api: Phase 5
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pipeline}:${POSTGRES_PASSWORD:-pipeline}@postgres:5432/${POSTGRES_DB:-marketdata}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8001:8000"     # REST API
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   redpanda_data:

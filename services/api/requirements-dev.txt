@@ -1,0 +1,2 @@
+# Test dependencies only — fastapi and psycopg2 are not needed to test query builders.
+pytest==8.2.2

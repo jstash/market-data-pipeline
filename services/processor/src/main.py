@@ -156,7 +156,7 @@ def run(log: logging.Logger) -> None:
             if now - last_flush >= FLUSH_INTERVAL:
                 cutoff_ms = int((time.time() - 90) * 1000)
                 for candle in accumulator.flush_older_than(cutoff_ms):
-                    _emit_candle(
+                    anomaly_count += _emit_candle(
                         candle,
                         producer,
                         detector,
@@ -215,7 +215,7 @@ def run(log: logging.Logger) -> None:
                 continue
 
             for candle in accumulator.add_trade(symbol, price, qty, ts_ms):
-                _emit_candle(
+                anomaly_count += _emit_candle(
                     candle,
                     producer,
                     detector,
@@ -247,8 +247,8 @@ def _emit_candle(
     log: logging.Logger,
     last_candle_ms: dict[str, int],
     missing_data_alerted: set[str],
-) -> None:
-    """Produce a completed candle and check it for anomalies."""
+) -> int:
+    """Produce a completed candle, returning number of emitted anomalies."""
     msg = candle.to_message()
     _produce(producer, TOPIC_OHLCV, candle.symbol, msg)
     last_candle_ms[candle.symbol] = candle.bucket_ms
@@ -262,6 +262,8 @@ def _emit_candle(
             f" symbol={candle.symbol}"
             f" severity={anomaly.get('severity')}"
         )
+        return 1
+    return 0
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

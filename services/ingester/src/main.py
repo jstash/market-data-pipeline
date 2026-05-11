@@ -126,6 +126,8 @@ async def ingest(producer: Producer, log: logging.Logger) -> None:
                     if count > 0 and count % 500 == 0:
                         log.info(f"produced {count} events | symbol={SYMBOL}")
 
+        except asyncio.CancelledError:
+            raise
         except websockets.exceptions.ConnectionClosed as exc:
             log.warning(f"connection closed | reason={exc} | retry_in={backoff:.1f}s")
         except OSError as exc:
@@ -153,16 +155,22 @@ def main() -> None:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
+    ingest_task: asyncio.Task | None = None
+
     def _shutdown(signum, _frame):
         log.info(f"received signal {signum}, shutting down")
         producer.flush(timeout=10)
-        loop.stop()
+        if ingest_task is not None and not ingest_task.done():
+            loop.call_soon_threadsafe(ingest_task.cancel)
 
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
 
     try:
-        loop.run_until_complete(ingest(producer, log))
+        ingest_task = loop.create_task(ingest(producer, log))
+        loop.run_until_complete(ingest_task)
+    except asyncio.CancelledError:
+        log.info("ingest task cancelled")
     finally:
         producer.flush(timeout=10)
         loop.close()
